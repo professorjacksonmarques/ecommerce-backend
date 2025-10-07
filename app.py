@@ -5,18 +5,38 @@ import sqlite3
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/')
-def home():
-    return 'API do e-commerce está online!'
-
+# ---------- Helpers ----------
 def get_db_connection():
-    conn = sqlite3.connect('database.db')
+    # check_same_thread=False ajuda quando há múltiplas threads/workers
+    conn = sqlite3.connect('database.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
+# ---------- Healthcheck ----------
+@app.route('/', methods=['GET', 'HEAD'])
+def home():
+    return 'API do e-commerce está online!'
+
+# ---------- PRODUCTS ----------
 @app.route('/api/products', methods=['GET'])
-def get_products():
-    data = request.get_json(force=True)
+def list_products():
+    conn = get_db_connection()
+    rows = conn.execute('SELECT * FROM products').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows]), 200
+
+@app.route('/api/products/<int:produto_id>', methods=['GET'])
+def get_product(produto_id):
+    conn = get_db_connection()
+    row = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'erro': 'Produto não encontrado'}), 404
+    return jsonify(dict(row)), 200
+
+@app.route('/api/products', methods=['POST'])
+def create_product():
+    data = request.get_json(force=True) or {}
     nome = data.get('nome')
     preco = data.get('preco')
     descricao = data.get('descricao', '')
@@ -25,45 +45,43 @@ def get_products():
         return jsonify({'erro': 'Nome e preço são obrigatórios'}), 400
 
     conn = get_db_connection()
-    conn.execute('INSERT INTO products (nome, preco, descricao) VALUES (?, ?, ?)', 
-                 (nome, preco, descricao))
+    cur = conn.execute(
+        'INSERT INTO products (nome, preco, descricao) VALUES (?, ?, ?)',
+        (nome, preco, descricao)
+    )
     conn.commit()
-    novo = conn.execute('SELECT * FROM products ORDER BY id DESC LIMIT 1').fetchone()
+    new_id = cur.lastrowid
+    novo = conn.execute('SELECT * FROM products WHERE id = ?', (new_id,)).fetchone()
     conn.close()
-
     return jsonify(dict(novo)), 201
 
 @app.route('/api/products/<int:produto_id>', methods=['PUT'])
 def update_product(produto_id):
-    data = request.get_json(force=True)
-    nome = data.get('nome')
-    preco = data.get('preco')
-    descricao = data.get('descricao')
+    data = request.get_json(force=True) or {}
 
     conn = get_db_connection()
     produto = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
-
     if not produto:
         conn.close()
         return jsonify({'erro': 'Produto não encontrado'}), 404
 
-    conn.execute('UPDATE products SET nome = ?, preco = ?, descricao = ? WHERE id = ?', 
-                 (nome if nome is not None else produto['nome'],
-         preco if preco is not None else produto['preco'],
-         descricao if descricao is not None else produto['descricao'],
-         produto_id))
+    nome = data.get('nome', produto['nome'])
+    preco = data.get('preco', produto['preco'])
+    descricao = data.get('descricao', produto['descricao'])
+
+    conn.execute(
+        'UPDATE products SET nome = ?, preco = ?, descricao = ? WHERE id = ?',
+        (nome, preco, descricao, produto_id)
+    )
     conn.commit()
     atualizado = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
     conn.close()
-
-    return jsonify(dict(atualizado))
-
+    return jsonify(dict(atualizado)), 200
 
 @app.route('/api/products/<int:produto_id>', methods=['DELETE'])
 def delete_product(produto_id):
     conn = get_db_connection()
     produto = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
-
     if not produto:
         conn.close()
         return jsonify({'erro': 'Produto não encontrado'}), 404
@@ -71,28 +89,30 @@ def delete_product(produto_id):
     conn.execute('DELETE FROM products WHERE id = ?', (produto_id,))
     conn.commit()
     conn.close()
+    return jsonify({'mensagem': 'Produto removido com sucesso'}), 200
 
-    return jsonify({'mensagem': 'Produto removido com sucesso'})
-
-
-
+# ---------- AUTH ----------
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.get_json()
+    data = request.get_json(force=True) or {}
     username = data.get('username')
     password = data.get('password')
 
+    if not username or not password:
+        return jsonify({'message': 'username e password são obrigatórios'}), 400
+
     conn = get_db_connection()
     user = conn.execute(
-        'SELECT * FROM users WHERE username = ? AND password = ?', 
+        'SELECT * FROM users WHERE username = ? AND password = ?',
         (username, password)
     ).fetchone()
     conn.close()
 
     if user:
-        return jsonify({'message': 'Login successful'})
-    else:
-        return jsonify({'message': 'Invalid credentials'}), 401
+        return jsonify({'message': 'Login successful'}), 200
+    return jsonify({'message': 'Invalid credentials'}), 401
 
+# ---------- Run local ----------
 if __name__ == '__main__':
+    # Em produção use gunicorn. Para local, tudo bem assim:
     app.run(host='0.0.0.0', port=5000, debug=True)

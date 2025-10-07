@@ -53,7 +53,7 @@ def home():
 @app.route('/api/products', methods=['GET'])
 def list_products():
     conn = get_db_connection()
-    rows = conn.execute('SELECT * FROM products').fetchall()
+    rows = conn.execute('SELECT id, nome AS name, preco AS price, descricao AS description FROM products').fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows]), 200
 

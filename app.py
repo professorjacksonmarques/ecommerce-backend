@@ -1,9 +1,44 @@
+
+# topo do app.py
+from werkzeug.security import generate_password_hash, check_password_hash
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
 
 app = Flask(__name__)
 CORS(app)
+
+
+
+def init_db():
+    conn = get_db_connection()
+    # Tabelas
+    conn.execute('''CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS products(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        preco REAL NOT NULL,
+        descricao TEXT
+    )''')
+    # Seed admin se não existir
+    admin = conn.execute('SELECT 1 FROM users WHERE username=?', ('admin',)).fetchone()
+    if not admin:
+        hash_senha = generate_password_hash('123')
+        conn.execute('INSERT INTO users (username, password) VALUES (?, ?)',
+                     ('admin', hash_senha))
+    conn.commit()
+    conn.close()
+
+# chame logo depois de app = Flask(__name__)
+init_db()
+
+
+
 
 # ---------- Helpers ----------
 def get_db_connection():
@@ -117,7 +152,7 @@ def login():
     ).fetchone()
     conn.close()
 
-    if user:
+    if user and check_password_hash(user['password'], password):
         return jsonify({'message': 'Login successful'}), 200
     return jsonify({'message': 'Invalid credentials'}), 401
 

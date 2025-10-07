@@ -5,6 +5,10 @@ import sqlite3
 app = Flask(__name__)
 CORS(app)
 
+@app.route('/')
+def home():
+    return 'API do e-commerce está online!'
+
 def get_db_connection():
     conn = sqlite3.connect('database.db')
     conn.row_factory = sqlite3.Row

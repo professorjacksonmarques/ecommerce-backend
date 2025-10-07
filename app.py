@@ -92,8 +92,17 @@ def delete_product(produto_id):
     return jsonify({'mensagem': 'Produto removido com sucesso'}), 200
 
 # ---------- AUTH ----------
-@app.route('/api/login', methods=['POST'])
+@app.route('/api/login', methods=['GET', 'POST'])
 def login():
+    if request.method == 'GET':
+        return jsonify({
+            "hint": "Use POST com JSON para autenticar.",
+            "exemplo": {"username": "admin", "password": "123"}
+        }), 200
+
+
+
+
     data = request.get_json(force=True) or {}
     username = data.get('username')
     password = data.get('password')

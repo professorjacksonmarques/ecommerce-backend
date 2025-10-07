@@ -16,7 +16,7 @@ def get_db_connection():
 
 @app.route('/api/products', methods=['GET'])
 def get_products():
-    data = request.get_json()
+    data = request.get_json(force=True)
     nome = data.get('nome')
     preco = data.get('preco')
     descricao = data.get('descricao', '')
@@ -28,13 +28,14 @@ def get_products():
     conn.execute('INSERT INTO products (nome, preco, descricao) VALUES (?, ?, ?)', 
                  (nome, preco, descricao))
     conn.commit()
+    novo = conn.execute('SELECT * FROM products ORDER BY id DESC LIMIT 1').fetchone()
     conn.close()
 
-    return jsonify({'mensagem': 'Produto criado com sucesso'}), 201
+    return jsonify(dict(novo)), 201
 
 @app.route('/api/products/<int:produto_id>', methods=['PUT'])
 def update_product(produto_id):
-    data = request.get_json()
+    data = request.get_json(force=True)
     nome = data.get('nome')
     preco = data.get('preco')
     descricao = data.get('descricao')
@@ -42,16 +43,20 @@ def update_product(produto_id):
     conn = get_db_connection()
     produto = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
 
-    if produto is None:
+    if not produto:
         conn.close()
         return jsonify({'erro': 'Produto não encontrado'}), 404
 
     conn.execute('UPDATE products SET nome = ?, preco = ?, descricao = ? WHERE id = ?', 
-                 (nome, preco, descricao, produto_id))
+                 (nome if nome is not None else produto['nome'],
+         preco if preco is not None else produto['preco'],
+         descricao if descricao is not None else produto['descricao'],
+         produto_id))
     conn.commit()
+    atualizado = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
     conn.close()
 
-    return jsonify({'mensagem': 'Produto atualizado com sucesso'})
+    return jsonify(dict(atualizado))
 
 
 @app.route('/api/products/<int:produto_id>', methods=['DELETE'])
@@ -59,7 +64,7 @@ def delete_product(produto_id):
     conn = get_db_connection()
     produto = conn.execute('SELECT * FROM products WHERE id = ?', (produto_id,)).fetchone()
 
-    if produto is None:
+    if not produto:
         conn.close()
         return jsonify({'erro': 'Produto não encontrado'}), 404
 
